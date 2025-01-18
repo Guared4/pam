@@ -380,7 +380,7 @@ pam                        : ok=31   changed=23   unreachable=0    failed=0    s
 
 root@guared:/home/guared/pam# ssh otus@192.168.57.10
 The authenticity of host '192.168.57.10 (192.168.57.10)' can't be established.
-ED25519 key fingerprint is SHA256:drYEw+YBLB47fGHsQFCq92ysc4Ao7DNA8hKkBU5dpnU.
+ED25519 key fingerprint is SHA256:ckDOO6bI1Pf9I2GycSGI02LZ9ZTgxQBlO6w9Ym6ZOeM.
 This key is not known by any other names
 Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
 Warning: Permanently added '192.168.57.10' (ED25519) to the list of known hosts.
