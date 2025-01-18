@@ -1,0 +1,200 @@
+- hosts: all
+  become: yes
+  tasks:
+
+    # Создание пользователей otusadm и otus
+    - name: Create user otusadm
+      user:
+        name: otusadm
+        state: present
+
+    - name: Create user otus
+      user:
+        name: otus
+        state: present
+
+    # Установка паролей для пользователей с помощью chpasswd
+    - name: Set password for otusadm
+      shell: echo "otusadm:Otus2022!" | chpasswd
+
+    - name: Set password for otus
+      shell: echo "otus:Otus2022!" | chpasswd
+
+    # Создание группы admin
+    - name: Ensure admin group exists
+      group:
+        name: admin
+        state: present
+
+    # Добавление пользователей в группу admin
+    - name: Add otusadm to admin group
+      user:
+        name: otusadm
+        groups: admin
+        append: yes
+
+    - name: Add root to admin group
+      user:
+        name: root
+        groups: admin
+        append: yes
+
+    - name: Add vagrant to admin group
+      user:
+        name: vagrant
+        groups: admin
+        append: yes
+
+    # Настройка PAM для ограничения доступа по выходным для пользователя otus
+    - name: Ensure /etc/security/time.conf exists
+      file:
+        path: /etc/security/time.conf
+        state: touch
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Restrict login for otus on weekends
+      lineinfile:
+        path: /etc/security/time.conf
+        line: 'sshd;*;otus;!Wd0000-2400'  # Блокировка доступа по выходным
+        create: yes
+        state: present
+
+    - name: Enable pam_time in PAM configuration
+      lineinfile:
+        path: /etc/pam.d/sshd
+        line: 'account required pam_time.so'
+        insertafter: '^account'
+        state: present
+
+    # Разрешает аутентификацию по паролю
+    #- name: Ensure PasswordAuthentication is enabled in sshd_config
+    #  lineinfile:
+    #    path: /etc/ssh/sshd_config
+    #    regexp: '^PasswordAuthentication'
+    #    line: 'PasswordAuthentication yes'
+    #    state: present
+
+    # Перезапуск SSHD
+    - name: Restart SSH service
+      service:
+        name: sshd
+        state: restarted
+
+    # Копирование SSH-ключа для пользователей otus и otusadm
+    - name: Ensure .ssh directory exists for otus
+      file:
+        path: /home/otus/.ssh
+        state: directory
+        owner: otus
+        group: otus
+        mode: '0700'
+
+    - name: Copy SSH public key to otus
+      copy:
+        content: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+        dest: /home/otus/.ssh/authorized_keys
+        owner: otus
+        group: otus
+        mode: '0600'
+
+    - name: Ensure .ssh directory exists for otusadm
+      file:
+        path: /home/otusadm/.ssh
+        state: directory
+        owner: otusadm
+        group: otusadm
+        mode: '0700'
+
+    - name: Copy SSH public key to otusadm
+      copy:
+        content: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+        dest: /home/otusadm/.ssh/authorized_keys
+        owner: otusadm
+        group: otusadm
+        mode: '0600'
+
+    # Установка Docker и добавление пользователя otusadm в группу docker
+
+    # Обновление списка пакетов
+    - name: Update apt package cache
+      apt:
+        update_cache: yes
+
+    # Установка зависимостей для добавления репозитория Docker
+    - name: Install dependencies for Docker repository
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+
+    # Ручная загрузка GPG-ключа Docker
+    - name: Download Docker GPG key manually
+      shell: curl -fsSL http://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+    # Добавление GPG-ключа Docker
+    - name: Add Docker GPG key
+      apt_key:
+        file: /usr/share/keyrings/docker-archive-keyring.gpg
+        state: present
+
+    # Добавление репозитория Docker
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu jammy stable"
+        state: present
+
+    # Обновление списка пакетов после добавления репозитория
+    - name: Update apt package cache after adding Docker repository
+      apt:
+        update_cache: yes
+
+    # Установка Docker
+    - name: Install Docker
+      apt:
+        name: docker-ce
+        state: present
+
+    # Проверка, что Docker запущен и включен в автозагрузку
+    - name: Ensure Docker is running and enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    # Добавление пользователя otusadm в группу docker
+    - name: Ensure docker group exists
+      group:
+        name: docker
+        state: present
+
+    - name: Add otusadm to docker group
+      user:
+        name: otusadm
+        groups: docker
+        append: yes
+
+    # Разрешение пользователю otusadm перезапускать Docker через sudo
+    - name: Validate sudoers file before modification
+      command: visudo -cf /etc/sudoers
+      changed_when: false
+
+    - name: Allow otusadm to restart Docker service via sudo
+      lineinfile:
+        path: /etc/sudoers
+        line: 'otusadm ALL=(ALL) NOPASSWD: /bin/systemctl restart docker'
+        validate: 'visudo -cf %s'
+
+    # Перезагрузка systemd и перезапуск Docker
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Restart Docker service
+      service:
+        name: docker
+        state: restarted
